@@ -12,24 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def options_for(task):
-    qtype = task.question["type"]
-    criteria = task.question.get("criteria")
-    if qtype == "noul":
-        # JevBench labels are no/yes; its rubric is keyed false/true.
-        return [
-            {"id": "no", "description": "no: " + str(criteria["false"])},
-            {"id": "yes", "description": "yes: " + str(criteria["true"])},
-        ]
-    if qtype == "choice":
-        return [{"id": label, "description": f"{label}: {criteria[label]}"}
-                for label in task.labels]
-    if qtype == "score":
-        return [{"id": label, "description": f"{label}: {criteria[int(label)]}"}
-                for label in task.labels]
-    raise ValueError(f"Unsupported JevBench question type: {qtype}")
-
-
 def write_new(path: Path, content: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8", newline="\n") as stream:
@@ -46,6 +28,8 @@ def main():
                         help="new output directory (default: ../results/fastsem-jev-public-l16r25-<UTC timestamp>)")
     parser.add_argument("--layer", type=int, default=16)
     parser.add_argument("--retain-ratio", type=float, default=0.25)
+    parser.add_argument("--model", default="Qwen/Qwen3.5-4B", help="Pinned model name or local weights directory")
+    parser.add_argument("--revision", default="851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a")
     args = parser.parse_args()
 
     repo = args.jevbench_repo.resolve()
@@ -77,9 +61,10 @@ def main():
     if not tasks or any(task.split != "public" for task in tasks):
         parser.error("The selected files must contain public-split tasks only")
 
-    from fastsem_jev import FastSemJev
-    from fastsem_jev.engine import MODEL, REVISION
-    engine = FastSemJev(layer=args.layer, retain_ratio=args.retain_ratio)
+    from fastsem_jev.jevbench_adapter import FastSemLocalAdapter
+    adapter = FastSemLocalAdapter(endpoint=args.model, revision=args.revision,
+                                  layer=args.layer, retain_ratio=args.retain_ratio)
+    adapter.load()
     started_utc = datetime.now(timezone.utc).isoformat()
     print(f"Loaded {len(tasks)} public tasks; model load completed before timing.", flush=True)
 
@@ -87,22 +72,17 @@ def main():
     records = []
     with results_path.open("x", encoding="utf-8", newline="\n") as results_file:
       for index, task in enumerate(tasks, 1):
-        request_options = options_for(task)
         started = time.perf_counter()
-        answer = engine.decide(
-            state=task.state,
-            question=task.question["instructions"],
-            options=request_options,
-        )
+        answer = adapter.run(task)
         latency_s = time.perf_counter() - started
-        scored = score_task(answer["probabilities"], task)
+        scored = score_task(answer.probs or {}, task)
         record = {
             "task_id": task.id,
             "family": task.family,
             "split": task.split,
             "group": task.group,
-            "ok": True,
-            "status": "ok",
+            "ok": answer.ok,
+            "status": "ok" if answer.ok else "failed",
             "valid": scored["valid"],
             "strict_valid": scored["strict_valid"],
             "renormalized": scored["renormalized"],
@@ -110,14 +90,14 @@ def main():
             "predicted": scored.get("predicted"),
             "ordinal_ev": scored.get("ordinal_ev"),
             "probs": scored.get("probs"),
-            "probs_as_returned": answer["probabilities"],
-            "probs_source": "native_option_logits",
-            "model": MODEL,
+            "probs_as_returned": answer.probs,
+            "probs_source": answer.probs_source,
+            "model": adapter.model,
             "latency_s": latency_s,
-            "usage": {"output_tokens": 0},
+            "usage": answer.usage,
             "cost_usd": None,
             "cost_basis": "self_hosted_gpu_cost_not_estimated",
-            "error": None,
+            "error": answer.error,
         }
         records.append(record)
         results_file.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
@@ -127,6 +107,8 @@ def main():
             print(f"{index}/{len(tasks)} completed", flush=True)
 
     summary = summarize(tasks, records, headline_only=True)
+    summary["latency"]["mean_s"] = sum(r["latency_s"] for r in records) / len(records)
+    summary["latency"]["total_s"] = sum(r["latency_s"] for r in records)
     summary["dataset_hash"] = dataset_hash(tasks)
     summary["run"] = {
         "method": "fastsem-jev",
@@ -134,13 +116,15 @@ def main():
         "retain_ratio": args.retain_ratio,
         "n_tasks": len(tasks),
         "repetitions_per_task": 1,
-        "model_revision": REVISION,
+        "model_revision": adapter.revision,
+        "model_source": adapter.endpoint,
+        "adapter": adapter.name,
         "jevbench_git_commit": subprocess.run(
             ["git", "-C", str(repo), "rev-parse", "HEAD"], check=True,
             capture_output=True, text=True).stdout.strip(),
         "started_utc": started_utc,
         "finished_utc": datetime.now(timezone.utc).isoformat(),
-        "timing_note": "Model load excluded; latency is one timed decision call per public task.",
+        "timing_note": "Model load excluded; latency wraps adapter.run(task), including mapping, inference and result packaging, once per public task.",
         "prompt_note": "JevBench task fields are mapped to fastsem-jev's direct evidence/criterion/options prompt; this is not a JevBench leaderboard submission.",
         "source_tiers": [path.name for path in task_files],
     }

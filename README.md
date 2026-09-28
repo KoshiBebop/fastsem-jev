@@ -133,6 +133,10 @@ uv run python scripts/jevbench_public.py
 
 The command automatically uses a sibling `jevbench` checkout and creates a timestamped result directory under the parent `results/` folder, so it will not overwrite an earlier run. The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). The default primary configuration is layer 16 / 25% retention (`l16r25`). To test a separately measured alternative, add `--layer 16 --retain-ratio 0.175`; to use a JevBench checkout elsewhere, set `JEVBENCH_DIR` or pass `--jevbench-repo`. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
 
+### JevBench in-process integration
+
+The public-set script uses `FastSemLocalAdapter` with cached model loading and native probabilities. For registration in JevBench's CLI, see the [adapter contract, integration patch and validation](integrations/jevbench/README.md). The patch is supplied for upstream review; it has not been merged into JevBench. The user-facing command remains `fastsem-jev`.
+
 ### Method
 
 The model processes the full prompt through its first 16 layers. At that point fastsem-jev ranks tokens inside the evidence value by cosine similarity between each token hidden state and the final decision-token hidden state. It retains the configured evidence fraction, including up to 64 head and tail anchors inside that budget, then prefers contiguous windows of radius two. Instructions, criterion, options and the answer position remain intact. Qwen3.5 attention masks are rebuilt using original position indices. All 32 transformer layers execute; final option-letter logits are read directly, with no autoregressive decoding. The method uses frozen weights, no fitted calibration and no length-based routing.

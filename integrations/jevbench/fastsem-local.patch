@@ -1,0 +1,72 @@
+diff --git a/jevbench/adapters/__init__.py b/jevbench/adapters/__init__.py
+index c71d476..0ff78d6 100644
+--- a/jevbench/adapters/__init__.py
++++ b/jevbench/adapters/__init__.py
+@@ -16,6 +16,7 @@ Raw provider responses are preserved by the runner, not here.
+ """
+ 
+ from .base import DecisionResult  # noqa: F401
++from .fastsem_local import FastSemLocalAdapter  # noqa: F401
+ from .typesafe import TypeSafeAdapter  # noqa: F401
+ from .openai_compat import OpenAICompatAdapter  # noqa: F401
+ from .systemone_list import SystemOneListAdapter  # noqa: F401
+diff --git a/jevbench/adapters/fastsem_local.py b/jevbench/adapters/fastsem_local.py
+new file mode 100644
+index 0000000..8ca0e3e
+--- /dev/null
++++ b/jevbench/adapters/fastsem_local.py
+@@ -0,0 +1,6 @@
++"""Load the optional fastsem-jev package only when selected."""
++
++
++def FastSemLocalAdapter(**kwargs):
++    from fastsem_jev.jevbench_adapter import FastSemLocalAdapter as Adapter
++    return Adapter(**kwargs)
+diff --git a/jevbench/cli.py b/jevbench/cli.py
+index da38bea..8fec888 100644
+--- a/jevbench/cli.py
++++ b/jevbench/cli.py
+@@ -27,6 +27,7 @@ from .adapters import (GradioSpaceAdapter, LocalOpenJevAdapter, NeedleLocalAdapt
+                        LayaLocalAdapter, Gliner2LocalAdapter, VerdictLocalAdapter, PawLocalAdapter,
+                        ClassifierDevAdapter, CertoLocalAdapter, QwenFlashLinearAdapter)
+ from .budget import Ledger
++from .adapters import FastSemLocalAdapter
+ from .runner import DEFAULT_RESERVE_USD, Runner
+ from .summarize import public_export, summarize
+ from .tasks import dataset_hash, load_jsonl
+@@ -55,7 +56,7 @@ def cmd_run(args) -> int:
+     if args.limit:
+         tasks = tasks[: args.limit]
+ 
+-    kinds = {"typesafe": TypeSafeAdapter, "systemone_list": SystemOneListAdapter,
++    kinds = {"fastsem_local": FastSemLocalAdapter, "typesafe": TypeSafeAdapter, "systemone_list": SystemOneListAdapter,
+              "gradio_space": GradioSpaceAdapter, "local_openjev": LocalOpenJevAdapter,
+              "openai_compat": OpenAICompatAdapter,
+              "needle_local": NeedleLocalAdapter,
+@@ -66,7 +67,7 @@ def cmd_run(args) -> int:
+              "verdict_local": VerdictLocalAdapter, "paw_local": PawLocalAdapter,
+              "classifier_dev": ClassifierDevAdapter, "certo_local": CertoLocalAdapter,
+              "qwen_flash_linear": QwenFlashLinearAdapter}
+-    if args.adapter not in ("typesafe", "djev", "needle_local", "semif_direct", "so1_decider", "sg_system_one", "classifier_dev") and not args.endpoint:
++    if args.adapter not in ("fastsem_local", "typesafe", "djev", "needle_local", "semif_direct", "so1_decider", "sg_system_one", "classifier_dev") and not args.endpoint:
+         print(f"--endpoint required for {args.adapter}", file=sys.stderr)
+         return 2
+     kwargs = dict(endpoint=args.endpoint, model=args.model,
+@@ -75,7 +76,7 @@ def cmd_run(args) -> int:
+                   price_output_per_m=args.price_out_per_m)
+     if args.adapter == "openai_compat":
+         kwargs["model"] = args.model or ""
+-    if args.adapter in ("local_openjev", "semif_direct", "so1_decider", "sg_system_one",
++    if args.adapter in ("fastsem_local", "local_openjev", "semif_direct", "so1_decider", "sg_system_one",
+                         "laya_local", "gliner2_local", "verdict_local", "paw_local", "certo_local"):
+         kwargs["revision"] = args.revision
+     adapter = kinds[args.adapter](**kwargs)
+@@ -161,7 +162,7 @@ def main(argv=None) -> int:
+     p_run = sub.add_parser("run", help="run the benchmark over tasks")
+     p_run.add_argument("--tasks", required=True)
+     p_run.add_argument("--adapter", required=True,
+-                       choices=["typesafe", "systemone_list", "gradio_space",
++                       choices=["fastsem_local", "typesafe", "systemone_list", "gradio_space",
+                                 "local_openjev", "openai_compat", "needle_local",
+                                 "semif_direct", "so1_decider", "remote_inproc",
+                                 "sg_system_one", "djev", "laya_local", "gliner2_local",

@@ -133,6 +133,10 @@ uv run python scripts/jevbench_public.py
 
 命令会自动使用同级目录的 `jevbench` checkout，并在上级 `results/` 下创建带时间戳的结果目录，不会覆盖旧结果。输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。默认主配置为第 16 层 / 保留 25%（`l16r25`）。如需复现单独测过的替代参数，可加 `--layer 16 --retain-ratio 0.175`；若 JevBench 不在同级目录，可设置 `JEVBENCH_DIR` 或传入 `--jevbench-repo`。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
 
+### JevBench 进程内接入
+
+公开集脚本已使用 `FastSemLocalAdapter`：模型加载一次，逐题返回原始选项概率。需要接入 JevBench CLI 时，参见[接口说明、注册补丁与测试方法](integrations/jevbench/README.md)。该补丁供上游审查，目前尚未被 JevBench 合并；日常使用仍只有 `fastsem-jev` 一个命令入口。
+
 ### 方法简介
 
 模型先对完整提示词执行前 16 层。fastsem-jev 按证据 value 中每个 token 的隐状态与最终决策 token 隐状态之间的余弦相似度排序，保留配置比例的证据 token；最多 64 个首尾锚点包含在此预算内，然后优先保留半径为 2 的连续窗口。指令、criterion、选项和答案位置保留。重建 Qwen3.5 注意力掩码时沿用原始位置索引。模型仍执行全部 32 层，最终直接读取选项字母 logits，不做自回归解码。权重冻结，不拟合校准参数，也不按输入长度切换路径。
