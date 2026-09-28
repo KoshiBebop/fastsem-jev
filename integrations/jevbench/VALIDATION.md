@@ -42,3 +42,29 @@ was used. The Linux command is documented in README.md for evaluator integration
 
 Local full evidence: `D:\jev\results\fastsem-jev-public-l16r25-20260928T151428Z\`
 (`results.jsonl`, `summary.json`, `direct-check.jsonl`, `direct-check-summary.json`).
+
+## Matched SemIf baseline
+
+The local SemIf reproduction uses the same `FastSemJev` weights, tokenizer,
+direct prompt, canonical option order and option-letter softmax. It performs
+the full 32-layer forward without token compression (`method="semif"`). This
+is the strict same-prompt baseline, not the upstream native-prompt adapter run.
+Both methods use the same `FastSemLocalAdapter.run` wrapper for timing, response
+validation and packaging. The baseline substitutes only the engine's readout path.
+All 231 public tasks were run once, with model loading outside the timer and
+no extra warmup inference. The already-completed fastsem adapter run is reused.
+
+| Method | Correct | Accuracy | Mean (ms) | Median (ms) | P95 (ms) | Total (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| SemIf full, same-prompt local reproduction | 183/231 | 79.22% | 132.89 | 63.69 | 429.84 | 30.6983 |
+| fastsem-jev l16r25 | 180/231 | 77.92% | 107.07 | 70.53 | 276.33 | 24.7331 |
+
+The total-time ratio is **1.241x relative to SemIf**, not relative to raw Qwen
+generation (not rerun here). Accuracy decreases by 3 questions / 1.30 percentage
+points. Predictions agree on 222/231 tasks: SemIf alone is correct on 6, fastsem
+alone on 3. This public-set result does **not** meet the 1.5x speedup with no
+accuracy loss target. The median does not improve; the mean and P95 do.
+Single separate passes do not establish repeatability or statistical significance.
+
+Baseline evidence: `D:\jev\results\semif-public-matched-20260928T152010Z\`
+(`results.jsonl`, `summary.json`). Both summaries carry the identical dataset hash.
