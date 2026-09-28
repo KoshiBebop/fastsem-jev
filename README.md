@@ -1,3 +1,9 @@
+# fastsem-jev
+
+[English](README.md) · [简体中文](README.zh-CN.md)
+
+Training-free token compression for Qwen3.5-4B.
+
 ## Results on our benchmark
 
 All systems were evaluated once per question on the same 3,151-question Qwen3.5-4B workload. Accuracy and end-to-end latency come from that same inference call. Speedup = raw Qwen generation total time across all 3,151 questions ÷ method total time. Raw generation is 1.000×. Mean latency is per question; a single pass does not estimate run-to-run variance.
