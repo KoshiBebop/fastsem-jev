@@ -66,6 +66,20 @@ uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_
 uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
 ~~~
 
+Linux（需要兼容 CUDA 13 的 NVIDIA 驱动）：
+
+~~~bash
+git clone https://github.com/KoshiBebop/fastsem-jev.git /data/jev/fastsem-jev
+cd /data/jev/fastsem-jev
+export UV_CACHE_DIR=/data/jev/.cache/uv
+export HF_HOME=/data/jev/.cache/huggingface
+export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
+export CUDA_VISIBLE_DEVICES=0
+uv sync --locked
+uv run python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+~~~
+
 首次运行会将 Qwen/Qwen3.5-4B 下载到配置的 Hugging Face 缓存；默认使用本实验对应的固定模型 revision。逐条 JSONL 输出含选项预测、概率、耗时及 token 保留诊断。
 
 批量输入使用 JSONL，每行一个含 <code>state</code>、<code>question</code>、<code>options</code> 的请求，可选 <code>id</code> 与 <code>expected</code>。有 expected 标签时会计算准确率：

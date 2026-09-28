@@ -66,6 +66,20 @@ uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_
 uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
 ~~~
 
+Linux with a CUDA 13 compatible NVIDIA driver:
+
+~~~bash
+git clone https://github.com/KoshiBebop/fastsem-jev.git /data/jev/fastsem-jev
+cd /data/jev/fastsem-jev
+export UV_CACHE_DIR=/data/jev/.cache/uv
+export HF_HOME=/data/jev/.cache/huggingface
+export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
+export CUDA_VISIBLE_DEVICES=0
+uv sync --locked
+uv run python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+~~~
+
 The first run downloads Qwen/Qwen3.5-4B from Hugging Face into the configured cache. The default model revision is pinned to the revision used in this evaluation. Each JSONL result includes the option prediction, probabilities, latency and token-retention diagnostics.
 
 Batch input is JSONL: one request per line with <code>state</code>, <code>question</code>, <code>options</code>, and optional <code>id</code>/<code>expected</code>. Accuracy is calculated when expected labels are present:
