@@ -106,7 +106,7 @@ git -C D:\jev\jevbench checkout
 $env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
 $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
-uv run python scripts/jevbench_public.py --jevbench-repo D:\jev\jevbench --output-dir D:\jev\results\jevbench-public-fastsem
+uv run fastsem-jev-bench
 ~~~
 
 Linux（CUDA）：
@@ -120,10 +120,10 @@ export UV_CACHE_DIR=/data/jev/.cache/uv
 export HF_HOME=/data/jev/.cache/huggingface
 export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
-uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
+uv run fastsem-jev-bench
 ~~~
 
-输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。默认主配置为第 16 层 / 保留 25%（`l16r25`）。如需复现单独测过的替代参数，可加 `--layer 16 --retain-ratio 0.175`。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
+命令会自动使用同级目录的 `jevbench` checkout，并在上级 `results/` 下创建带时间戳的结果目录，不会覆盖旧结果。输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。默认主配置为第 16 层 / 保留 25%（`l16r25`）。如需复现单独测过的替代参数，可加 `--layer 16 --retain-ratio 0.175`；若 JevBench 不在同级目录，可设置 `JEVBENCH_DIR` 或传入 `--jevbench-repo`。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
 
 ### JevBench TypeSafe API
 

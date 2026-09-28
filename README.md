@@ -106,7 +106,7 @@ git -C D:\jev\jevbench checkout
 $env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
 $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
-uv run python scripts/jevbench_public.py --jevbench-repo D:\jev\jevbench --output-dir D:\jev\results\jevbench-public-fastsem
+uv run fastsem-jev-bench
 ~~~
 
 Linux (CUDA):
@@ -120,10 +120,10 @@ export UV_CACHE_DIR=/data/jev/.cache/uv
 export HF_HOME=/data/jev/.cache/huggingface
 export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
-uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
+uv run fastsem-jev-bench
 ~~~
 
-The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). The default primary configuration is layer 16 / 25% retention (`l16r25`). To test a separately measured alternative, add `--layer 16 --retain-ratio 0.175`. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
+The command automatically uses a sibling `jevbench` checkout and creates a timestamped result directory under the parent `results/` folder, so it will not overwrite an earlier run. The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). The default primary configuration is layer 16 / 25% retention (`l16r25`). To test a separately measured alternative, add `--layer 16 --retain-ratio 0.175`; to use a JevBench checkout elsewhere, set `JEVBENCH_DIR` or pass `--jevbench-repo`. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
 
 ### JevBench TypeSafe API
 

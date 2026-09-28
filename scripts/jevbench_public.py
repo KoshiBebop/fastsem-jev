@@ -37,26 +37,32 @@ def write_new(path: Path, content: str):
 
 
 def main():
+    project_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jevbench-repo", required=True, type=Path,
-                        help="local clone of https://github.com/fstandhartinger/jevbench")
-    parser.add_argument("--output-dir", required=True, type=Path,
-                        help="new/append-free output directory outside the repository")
+    parser.add_argument("--jevbench-repo", type=Path,
+                        default=Path(os.environ.get("JEVBENCH_DIR", project_root.parent / "jevbench")),
+                        help="JevBench checkout (default: ../jevbench or JEVBENCH_DIR)")
+    parser.add_argument("--output-dir", type=Path,
+                        help="new output directory (default: ../results/fastsem-jev-public-l16r25-<UTC timestamp>)")
     parser.add_argument("--layer", type=int, default=16)
     parser.add_argument("--retain-ratio", type=float, default=0.25)
     args = parser.parse_args()
 
     repo = args.jevbench_repo.resolve()
-    out_dir = args.output_dir.resolve()
+    if args.output_dir is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        out_dir = project_root.parent / "results" / f"fastsem-jev-public-l{args.layer}r{args.retain_ratio * 100:g}-{stamp}"
+    else:
+        out_dir = args.output_dir.resolve()
     if not (repo / "jevbench" / "tasks.py").is_file():
         parser.error("--jevbench-repo must point to a JevBench checkout containing jevbench/tasks.py")
     if out_dir == repo or repo in out_dir.parents:
         parser.error("Keep generated results outside the JevBench checkout")
-    project_root = Path(__file__).resolve().parents[1]
     if out_dir == project_root or project_root in out_dir.parents:
         parser.error("Keep generated results outside the fastsem-jev checkout")
     if any((out_dir / name).exists() for name in ("results.jsonl", "summary.json")):
         parser.error("Output files already exist; choose a new output directory to preserve prior runs")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     sys.path.insert(0, str(repo))
     from jevbench.scoring import score_task

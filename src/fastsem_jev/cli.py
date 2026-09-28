@@ -3,12 +3,19 @@ import argparse
 import json
 import math
 from pathlib import Path
+import runpy
 import statistics
 import time
 
 import torch
 
 from .engine import FastSemJev, MODEL, REVISION
+
+
+def bench_main():
+    """Run the JevBench public split using this source checkout."""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "jevbench_public.py"
+    runpy.run_path(str(script), run_name="__main__")
 
 
 def main():
