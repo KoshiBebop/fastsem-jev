@@ -1,0 +1,11 @@
+{
+  "id": "delivery-example",
+  "state": "Order 1042 was shipped yesterday. The tracking page says it will arrive tomorrow.",
+  "question": "What is the current order status?",
+  "options": [
+    {"id": "processing", "description": "The order has not shipped yet."},
+    {"id": "in_transit", "description": "The order has shipped but has not arrived."},
+    {"id": "delivered", "description": "The order has already arrived."}
+  ],
+  "expected": "in_transit"
+}

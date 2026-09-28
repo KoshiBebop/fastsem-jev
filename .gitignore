@@ -1,0 +1,14 @@
+.venv/
+.cache/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+models/
+outputs/
+.env
+.env.*
+*.safetensors
+*.bin

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastsem-jev"
+version = "0.1.0"
+description = "Training-free evidence-token compression for typed decisions with Qwen3.5-4B"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "accelerate==1.12.0",
+    "huggingface-hub==1.31.0",
+    "numpy==2.2.6",
+    "protobuf==7.36.1",
+    "safetensors==0.8.0",
+    "sentencepiece==0.2.1",
+    "tokenizers==0.23.2",
+    "torch==2.10.0",
+    "transformers==5.17.0",
+]
+
+[project.scripts]
+fastsem-jev = "fastsem_jev.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
