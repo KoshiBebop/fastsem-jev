@@ -65,7 +65,7 @@ $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
 uv sync --locked
 uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+uv run fastsem-jev --state "The parcel arrives tomorrow." --question "Has it been delivered?" --options yes no
 ~~~
 
 Linux with a CUDA 13 compatible NVIDIA driver:
@@ -79,17 +79,25 @@ export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
 uv sync --locked
 uv run python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
-uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+uv run fastsem-jev --state "The parcel arrives tomorrow." --question "Has it been delivered?" --options yes no
 ~~~
 
 The first run downloads Qwen/Qwen3.5-4B from Hugging Face into the configured cache. The default model revision is pinned to the revision used in this evaluation. Each JSONL result includes the option prediction, probabilities, latency and token-retention diagnostics.
 
+Use the single local command `fastsem-jev`: `--state` is the text, `--question` is the criterion, and `--options` lists the allowed answers. Defaults are Qwen3.5-4B and l16r25; no server is needed. JSON decisions go to stdout and the timing summary goes to stderr. A command loads the model once and evaluates each request once; startup and model loading are excluded from the reported decision time, but are part of command wall time.
+
+Optional parameters use the same command:
+
+~~~bash
+uv run fastsem-jev --state "The parcel arrives tomorrow." --question "Has it been delivered?" --options "yes=It has arrived." "no=It has not arrived yet." --layer 16 --retain-ratio 0.25
+~~~
+
+Use `--model /path/to/Qwen3.5-4B` for existing local weights, or leave it out to use the pinned Hugging Face model. `--options` accepts 2–16 labels or `label=description` entries. For multiple requests, use `--input` to load JSON/JSONL with the same command; model loading is shared across the file. `--output` saves decisions to a new file; otherwise they are printed.
+
 Batch input is JSONL: one request per line with <code>state</code>, <code>question</code>, <code>options</code>, and optional <code>id</code>/<code>expected</code>. Accuracy is calculated when expected labels are present:
 
 ~~~powershell
-uv run fastsem-jev --input requests.jsonl --output outputs/decisions.jsonl --method fastsem
-uv run fastsem-jev --input requests.jsonl --method semif
-uv run fastsem-jev --input requests.jsonl --method qwen_generate
+uv run fastsem-jev --input requests.jsonl --output outputs/decisions.jsonl
 ~~~
 
 ### JevBench public-set evaluation
@@ -106,7 +114,7 @@ git -C D:\jev\jevbench checkout
 $env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
 $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
-uv run fastsem-jev-bench
+uv run python scripts/jevbench_public.py
 ~~~
 
 Linux (CUDA):
@@ -120,70 +128,10 @@ export UV_CACHE_DIR=/data/jev/.cache/uv
 export HF_HOME=/data/jev/.cache/huggingface
 export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
-uv run fastsem-jev-bench
+uv run python scripts/jevbench_public.py
 ~~~
 
 The command automatically uses a sibling `jevbench` checkout and creates a timestamped result directory under the parent `results/` folder, so it will not overwrite an earlier run. The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). The default primary configuration is layer 16 / 25% retention (`l16r25`). To test a separately measured alternative, add `--layer 16 --retain-ratio 0.175`; to use a JevBench checkout elsewhere, set `JEVBENCH_DIR` or pass `--jevbench-repo`. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
-
-### JevBench TypeSafe API
-
-fastsem-jev also serves the standard TypeSafe-compatible `POST /v1/systemone` interface. This lets JevBench's unchanged `typesafe` adapter call the local model. `GET /health` checks that the model is loaded. Requests are handled serially; no API key is required on loopback. For each question, the server performs one l16r25 direct option-logit decision (no generated tokens).
-
-Start the server in one terminal, after `uv sync --locked`:
-
-~~~bash
-uv run fastsem-jev-serve --layer 16 --retain-ratio 0.25 --served-name fastsem-jev --host 127.0.0.1 --port 8000
-~~~
-
-The same command works in PowerShell. Example payloads (probability values below are illustrative):
-
-~~~json
-{"state":"The request has manager approval.","model":"fastsem-jev","questions":{"q":{"type":"choice","instructions":"May the action proceed?","criteria":{"allow":"All required approval is present.","deny":"Approval is missing."}}}}
-~~~
-
-~~~json
-{"model":"fastsem-jev","answers":{"q":{"type":"choice","choice":"allow","probabilities":{"allow":0.91,"deny":0.09},"confidence":0.91}},"usage":{"input_tokens":42,"output_tokens":0}}
-~~~
-
-Noul responses contain `noul` (P(yes)); Choice responses contain `choice` and probabilities for every label; Score responses contain the probability map and its expected ordinal `score`. The server supports 2–16 options, returns HTTP 400 for malformed/unsupported requests, and never silently truncates an input.
-
-On Linux, run the official JevBench CLI against the local service from the fastsem-jev directory in a second terminal. The exact public-task command is:
-
-~~~bash
-export PYTHONPATH=/data/jev/jevbench
-mkdir -p /data/jev/results/jevbench-fastsem-l16r25
-uv run python -m jevbench.cli run \
-  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
-  --adapter typesafe --endpoint http://127.0.0.1:8000 --key-env '' --model fastsem-jev \
-  --cost-basis self_hosted_gpu_cost_not_estimated --reserve-usd 0 --cap-usd 0 \
-  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
-  --raw-dir /data/jev/results/jevbench-fastsem-l16r25/raw \
-  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
-  --manifest /data/jev/results/jevbench-fastsem-l16r25/manifest.json \
-  --run-label fastsem-jev-l16r25
-uv run python -m jevbench.cli summarize \
-  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
-  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
-  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
-  --public-export /data/jev/results/jevbench-fastsem-l16r25/summary.json
-~~~
-
-The standalone public-set script above is the cross-platform route; it uses JevBench's task scoring and summary modules directly. The official CLI example is for Linux because JevBench's local ledger uses Unix `fcntl` locking.
-
-Python API:
-
-~~~python
-from fastsem_jev import FastSemJev
-
-engine = FastSemJev(layer=16, retain_ratio=0.25)
-answer = engine.decide(
-    state="The parcel left the warehouse yesterday.",
-    question="Has it been delivered?",
-    options=[{"id": "yes", "description": "It has arrived."},
-             {"id": "no", "description": "It has not arrived yet."}],
-)
-print(answer["prediction"], answer["probabilities"])
-~~~
 
 ### Method
 

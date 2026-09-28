@@ -65,7 +65,7 @@ $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
 uv sync --locked
 uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
-uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+uv run fastsem-jev --state "The parcel arrives tomorrow." --question "Has it been delivered?" --options yes no
 ~~~
 
 Linux（需要兼容 CUDA 13 的 NVIDIA 驱动）：
@@ -79,7 +79,7 @@ export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
 uv sync --locked
 uv run python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'
-uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
+uv run fastsem-jev --state "The parcel arrives tomorrow." --question "Has it been delivered?" --options yes no
 ~~~
 
 首次运行会将 Qwen/Qwen3.5-4B 下载到配置的 Hugging Face 缓存；默认使用本实验对应的固定模型 revision。逐条 JSONL 输出含选项预测、概率、耗时及 token 保留诊断。
@@ -87,10 +87,18 @@ uv run fastsem-jev --input examples/request.json --output outputs/example.jsonl
 批量输入使用 JSONL，每行一个含 <code>state</code>、<code>question</code>、<code>options</code> 的请求，可选 <code>id</code> 与 <code>expected</code>。有 expected 标签时会计算准确率：
 
 ~~~powershell
-uv run fastsem-jev --input requests.jsonl --output outputs/decisions.jsonl --method fastsem
-uv run fastsem-jev --input requests.jsonl --method semif
-uv run fastsem-jev --input requests.jsonl --method qwen_generate
+uv run fastsem-jev --input requests.jsonl --output outputs/decisions.jsonl
 ~~~
+
+统一使用本地命令 `fastsem-jev`：`--state` 是待判断文本，`--question` 是判定问题，`--options` 是允许的答案。默认 Qwen3.5-4B、l16r25，无需启动服务。JSON 判定结果写到标准输出，计时汇总写到标准错误输出。每次命令加载一次模型，每个请求只推理一次；报告的判定耗时不含模型加载和进程启动，整条命令耗时则包含它们。
+
+可选参数仍使用同一个命令：
+
+~~~bash
+uv run fastsem-jev --state "快递明天送达。" --question "是否已经送达？" --options "yes=已经送达" "no=尚未送达" --layer 16 --retain-ratio 0.25
+~~~
+
+已有本地权重时加 `--model D:\jev\models\Qwen3.5-4B`，省略则使用固定版本的 Hugging Face 模型。`--options` 支持 2–16 个标签或 `标签=描述`。多个请求仍使用同一命令，通过 `--input` 读取 JSON/JSONL，整个文件共用一次模型加载。`--output` 将结果保存到新文件，省略则直接打印。
 
 ### JevBench 公开集测试
 
@@ -106,7 +114,7 @@ git -C D:\jev\jevbench checkout
 $env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
 $env:HF_HOME = 'D:\jev\.cache\huggingface'
 $env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
-uv run fastsem-jev-bench
+uv run python scripts/jevbench_public.py
 ~~~
 
 Linux（CUDA）：
@@ -120,70 +128,10 @@ export UV_CACHE_DIR=/data/jev/.cache/uv
 export HF_HOME=/data/jev/.cache/huggingface
 export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
 export CUDA_VISIBLE_DEVICES=0
-uv run fastsem-jev-bench
+uv run python scripts/jevbench_public.py
 ~~~
 
 命令会自动使用同级目录的 `jevbench` checkout，并在上级 `results/` 下创建带时间戳的结果目录，不会覆盖旧结果。输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。默认主配置为第 16 层 / 保留 25%（`l16r25`）。如需复现单独测过的替代参数，可加 `--layer 16 --retain-ratio 0.175`；若 JevBench 不在同级目录，可设置 `JEVBENCH_DIR` 或传入 `--jevbench-repo`。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
-
-### JevBench TypeSafe API
-
-fastsem-jev 现在也提供标准 TypeSafe 兼容接口 `POST /v1/systemone`，可以让 JevBench 未修改的 `typesafe` adapter 调用本地模型。`GET /health` 用于确认模型已加载。请求串行处理；仅在本机回环地址运行时无需 API key。每个问题执行一次 l16r25 直接选项 logits 判定，不生成 token。
-
-在一个终端启动服务（先执行过 `uv sync --locked`）：
-
-~~~bash
-uv run fastsem-jev-serve --layer 16 --retain-ratio 0.25 --served-name fastsem-jev --host 127.0.0.1 --port 8000
-~~~
-
-PowerShell 可使用相同的启动命令。请求和响应格式示例（概率值仅为示意）：
-
-~~~json
-{"state":"The request has manager approval.","model":"fastsem-jev","questions":{"q":{"type":"choice","instructions":"May the action proceed?","criteria":{"allow":"All required approval is present.","deny":"Approval is missing."}}}}
-~~~
-
-~~~json
-{"model":"fastsem-jev","answers":{"q":{"type":"choice","choice":"allow","probabilities":{"allow":0.91,"deny":0.09},"confidence":0.91}},"usage":{"input_tokens":42,"output_tokens":0}}
-~~~
-
-Noul 返回 `noul`（P(yes)）；Choice 返回 `choice` 和每个标签的概率；Score 返回概率分布及期望序数 `score`。服务支持 2–16 个选项；格式错误或不支持的请求返回 HTTP 400，不会静默截断输入。
-
-Linux 下，在第二个终端从 fastsem-jev 目录运行官方 JevBench CLI：
-
-~~~bash
-export PYTHONPATH=/data/jev/jevbench
-mkdir -p /data/jev/results/jevbench-fastsem-l16r25
-uv run python -m jevbench.cli run \
-  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
-  --adapter typesafe --endpoint http://127.0.0.1:8000 --key-env '' --model fastsem-jev \
-  --cost-basis self_hosted_gpu_cost_not_estimated --reserve-usd 0 --cap-usd 0 \
-  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
-  --raw-dir /data/jev/results/jevbench-fastsem-l16r25/raw \
-  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
-  --manifest /data/jev/results/jevbench-fastsem-l16r25/manifest.json \
-  --run-label fastsem-jev-l16r25
-uv run python -m jevbench.cli summarize \
-  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
-  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
-  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
-  --public-export /data/jev/results/jevbench-fastsem-l16r25/summary.json
-~~~
-
-上面的独立公开集脚本可跨平台运行，直接调用 JevBench 的题目计分和汇总代码。官方 CLI 示例限定 Linux，因为 JevBench 本地 ledger 使用 Unix `fcntl` 文件锁。
-
-Python 调用：
-
-~~~python
-from fastsem_jev import FastSemJev
-
-engine = FastSemJev(layer=16, retain_ratio=0.25)
-answer = engine.decide(
-    state="包裹昨天离开仓库。",
-    question="包裹送达了吗？",
-    options=[{"id": "yes", "description": "包裹已经送达。"},
-             {"id": "no", "description": "包裹尚未送达。"}],
-)
-print(answer["prediction"], answer["probabilities"])
-~~~
 
 ### 方法简介
 
