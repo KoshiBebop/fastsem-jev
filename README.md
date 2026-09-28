@@ -90,6 +90,39 @@ uv run fastsem-jev --input requests.jsonl --method semif
 uv run fastsem-jev --input requests.jsonl --method qwen_generate
 ~~~
 
+### JevBench public-set evaluation
+
+This runs fastsem-jev once on every task in JevBench's published `easy`, `original`, and `hard` public tiers, then scores the predictions with JevBench's own scoring and summary code. It does not access held-out/private tiers and does not submit a leaderboard entry. The adapter maps JevBench's typed rubric to fastsem-jev's direct evidence/criterion/options prompt, so treat this as a local public-set evaluation, not a claim of exact prompt parity with other JevBench adapters. Model loading is outside the per-question timer; each public task is inferred once. Results are written outside both repositories, and existing result files are never overwritten.
+
+Windows PowerShell:
+
+~~~powershell
+git clone --filter=blob:none --no-checkout https://github.com/fstandhartinger/jevbench.git D:\jev\jevbench
+git -C D:\jev\jevbench sparse-checkout init --cone
+git -C D:\jev\jevbench sparse-checkout set jevbench datasets/public
+git -C D:\jev\jevbench checkout
+$env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
+$env:HF_HOME = 'D:\jev\.cache\huggingface'
+$env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
+uv run python scripts/jevbench_public.py --jevbench-repo D:\jev\jevbench --output-dir D:\jev\results\jevbench-public-fastsem
+~~~
+
+Linux (CUDA):
+
+~~~bash
+git clone --filter=blob:none --no-checkout https://github.com/fstandhartinger/jevbench.git /data/jev/jevbench
+git -C /data/jev/jevbench sparse-checkout init --cone
+git -C /data/jev/jevbench sparse-checkout set jevbench datasets/public
+git -C /data/jev/jevbench checkout
+export UV_CACHE_DIR=/data/jev/.cache/uv
+export HF_HOME=/data/jev/.cache/huggingface
+export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
+export CUDA_VISIBLE_DEVICES=0
+uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
+~~~
+
+The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). To test a different compression setting, add `--layer 16 --retain-ratio 0.25`; the default is layer 16 / 17.5% retention. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
+
 Python API:
 
 ~~~python

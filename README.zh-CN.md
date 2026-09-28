@@ -90,6 +90,39 @@ uv run fastsem-jev --input requests.jsonl --method semif
 uv run fastsem-jev --input requests.jsonl --method qwen_generate
 ~~~
 
+### JevBench 公开集测试
+
+此流程会对 JevBench 已公开的 `easy`、`original`、`hard` 三个 split 中每道题各推理一次，并调用 JevBench 自己的计分和汇总代码。不会读取保留/私有 split，也不会自动提交排行榜。脚本会把 JevBench 的类型化题目映射到 fastsem-jev 的 evidence/criterion/options 直接提示词；因此这是本地公开集测试，不代表与 JevBench 其他 adapter 的提示词完全一致。模型加载不计入逐题延迟；每题只推理一次。结果写在两个代码仓库之外，且不会覆盖已有结果文件。
+
+Windows PowerShell：
+
+~~~powershell
+git clone --filter=blob:none --no-checkout https://github.com/fstandhartinger/jevbench.git D:\jev\jevbench
+git -C D:\jev\jevbench sparse-checkout init --cone
+git -C D:\jev\jevbench sparse-checkout set jevbench datasets/public
+git -C D:\jev\jevbench checkout
+$env:UV_CACHE_DIR = 'D:\jev\.cache\uv'
+$env:HF_HOME = 'D:\jev\.cache\huggingface'
+$env:HF_HUB_CACHE = 'D:\jev\.cache\huggingface\hub'
+uv run python scripts/jevbench_public.py --jevbench-repo D:\jev\jevbench --output-dir D:\jev\results\jevbench-public-fastsem
+~~~
+
+Linux（CUDA）：
+
+~~~bash
+git clone --filter=blob:none --no-checkout https://github.com/fstandhartinger/jevbench.git /data/jev/jevbench
+git -C /data/jevbench sparse-checkout init --cone
+git -C /data/jevbench sparse-checkout set jevbench datasets/public
+git -C /data/jevbench checkout
+export UV_CACHE_DIR=/data/jev/.cache/uv
+export HF_HOME=/data/jev/.cache/huggingface
+export HF_HUB_CACHE=/data/jev/.cache/huggingface/hub
+export CUDA_VISIBLE_DEVICES=0
+uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
+~~~
+
+输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。如需测试其他压缩配置，可加 `--layer 16 --retain-ratio 0.25`；默认值为第 16 层 / 保留 17.5%。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
+
 Python 调用：
 
 ~~~python
