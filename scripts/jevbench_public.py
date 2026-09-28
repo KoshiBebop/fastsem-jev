@@ -43,7 +43,7 @@ def main():
     parser.add_argument("--output-dir", required=True, type=Path,
                         help="new/append-free output directory outside the repository")
     parser.add_argument("--layer", type=int, default=16)
-    parser.add_argument("--retain-ratio", type=float, default=0.175)
+    parser.add_argument("--retain-ratio", type=float, default=0.25)
     args = parser.parse_args()
 
     repo = args.jevbench_repo.resolve()

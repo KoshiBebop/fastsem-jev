@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--revision", default=REVISION)
     parser.add_argument("--layer", type=int, default=16)
-    parser.add_argument("--retain-ratio", type=float, default=0.175)
+    parser.add_argument("--retain-ratio", type=float, default=0.25)
     parser.add_argument("--method", choices=["fastsem", "semif", "qwen_generate"], default="fastsem")
     args = parser.parse_args()
     content = args.input.read_text(encoding="utf-8")

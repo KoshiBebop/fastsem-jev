@@ -25,6 +25,8 @@ All systems were evaluated once per question on the same 3,151-question Qwen3.5-
 
 Native-method migration rows port each project's request/readout design to the same frozen Qwen3.5-4B and retain its native prompt. These compare end-to-end migrated implementations; prompt differences remain. SemIf and fastsem-jev use the same direct prompt. Exact upstream code revisions are recorded in results/results.json; per-question records are in results/rows/.
 
+The released default and primary method name `fastsem-jev` means **l16r25**: compress after layer 16 and retain 25% of evidence tokens. `l16r17p5` is a separately measured alternative, not the default.
+
 The 3,151 items combine public Jev questions with locally developed additions. This is a development benchmark, not an official JevBench score or independent blind test. JevBench also evaluates calibration and cost; this table reports accuracy and latency.
 
 ### fastsem-jev parameter sweep
@@ -121,14 +123,59 @@ export CUDA_VISIBLE_DEVICES=0
 uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
 ~~~
 
-The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). To test a different compression setting, add `--layer 16 --retain-ratio 0.25`; the default is layer 16 / 17.5% retention. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
+The output contains `results.jsonl` (one prediction, probability distribution, and latency per task) and `summary.json` (JevBench accuracy, calibration, latency, coverage, data hash, and source commit). The default primary configuration is layer 16 / 25% retention (`l16r25`). To test a separately measured alternative, add `--layer 16 --retain-ratio 0.175`. The first run downloads the pinned Qwen3.5-4B weights if they are not already cached.
+
+### JevBench TypeSafe API
+
+fastsem-jev also serves the standard TypeSafe-compatible `POST /v1/systemone` interface. This lets JevBench's unchanged `typesafe` adapter call the local model. `GET /health` checks that the model is loaded. Requests are handled serially; no API key is required on loopback. For each question, the server performs one l16r25 direct option-logit decision (no generated tokens).
+
+Start the server in one terminal, after `uv sync --locked`:
+
+~~~bash
+uv run fastsem-jev-serve --layer 16 --retain-ratio 0.25 --served-name fastsem-jev --host 127.0.0.1 --port 8000
+~~~
+
+The same command works in PowerShell. Example payloads (probability values below are illustrative):
+
+~~~json
+{"state":"The request has manager approval.","model":"fastsem-jev","questions":{"q":{"type":"choice","instructions":"May the action proceed?","criteria":{"allow":"All required approval is present.","deny":"Approval is missing."}}}}
+~~~
+
+~~~json
+{"model":"fastsem-jev","answers":{"q":{"type":"choice","choice":"allow","probabilities":{"allow":0.91,"deny":0.09},"confidence":0.91}},"usage":{"input_tokens":42,"output_tokens":0}}
+~~~
+
+Noul responses contain `noul` (P(yes)); Choice responses contain `choice` and probabilities for every label; Score responses contain the probability map and its expected ordinal `score`. The server supports 2–16 options, returns HTTP 400 for malformed/unsupported requests, and never silently truncates an input.
+
+On Linux, run the official JevBench CLI against the local service from the fastsem-jev directory in a second terminal. The exact public-task command is:
+
+~~~bash
+export PYTHONPATH=/data/jev/jevbench
+mkdir -p /data/jev/results/jevbench-fastsem-l16r25
+uv run python -m jevbench.cli run \
+  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
+  --adapter typesafe --endpoint http://127.0.0.1:8000 --key-env '' --model fastsem-jev \
+  --cost-basis self_hosted_gpu_cost_not_estimated --reserve-usd 0 --cap-usd 0 \
+  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
+  --raw-dir /data/jev/results/jevbench-fastsem-l16r25/raw \
+  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
+  --manifest /data/jev/results/jevbench-fastsem-l16r25/manifest.json \
+  --run-label fastsem-jev-l16r25
+uv run python -m jevbench.cli summarize \
+  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
+  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
+  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
+  --public-export /data/jev/results/jevbench-fastsem-l16r25/summary.json
+~~~
+
+The standalone public-set script above is the cross-platform route; it uses JevBench's task scoring and summary modules directly. The official CLI example is for Linux because JevBench's local ledger uses Unix `fcntl` locking.
 
 Python API:
 
 ~~~python
 from fastsem_jev import FastSemJev
 
-engine = FastSemJev(layer=16, retain_ratio=0.175)
+engine = FastSemJev(layer=16, retain_ratio=0.25)
 answer = engine.decide(
     state="The parcel left the warehouse yesterday.",
     question="Has it been delivered?",

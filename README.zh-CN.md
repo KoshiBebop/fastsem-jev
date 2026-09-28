@@ -25,6 +25,8 @@
 
 开源方法迁移行把各项目的请求/读出逻辑移植到相同的冻结 Qwen3.5-4B，并保留各自原生提示词。这是迁移后端到端表现对比，提示词差异仍然存在。SemIf 与 fastsem-jev 使用相同 direct 提示词。上游代码 revision 见 results/results.json；逐题记录见 results/rows/。
 
+发布版默认配置和主方法名 `fastsem-jev` 指 **l16r25**：第 16 层后压缩，保留 25% 证据 token。`l16r17p5` 是单独测过的替代参数，不是默认方法。
+
 3,151 题包括 Jev 公开题及本地构建的扩展题。这是开发用的自有benchmark，不是官方 JevBench 成绩，也不是独立盲测。JevBench 还评价校准度和成本；本表报告准确率与延迟。
 
 ### fastsem-jev 参数实验
@@ -121,14 +123,59 @@ export CUDA_VISIBLE_DEVICES=0
 uv run python scripts/jevbench_public.py --jevbench-repo /data/jev/jevbench --output-dir /data/jev/results/jevbench-public-fastsem
 ~~~
 
-输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。如需测试其他压缩配置，可加 `--layer 16 --retain-ratio 0.25`；默认值为第 16 层 / 保留 17.5%。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
+输出包括 `results.jsonl`（每题一次的预测、概率分布和耗时）与 `summary.json`（JevBench 准确率、校准、延迟、覆盖率、数据 hash 和上游代码 commit）。默认主配置为第 16 层 / 保留 25%（`l16r25`）。如需复现单独测过的替代参数，可加 `--layer 16 --retain-ratio 0.175`。首次运行时，若缓存中没有固定版本的 Qwen3.5-4B 权重，会先下载模型。
+
+### JevBench TypeSafe API
+
+fastsem-jev 现在也提供标准 TypeSafe 兼容接口 `POST /v1/systemone`，可以让 JevBench 未修改的 `typesafe` adapter 调用本地模型。`GET /health` 用于确认模型已加载。请求串行处理；仅在本机回环地址运行时无需 API key。每个问题执行一次 l16r25 直接选项 logits 判定，不生成 token。
+
+在一个终端启动服务（先执行过 `uv sync --locked`）：
+
+~~~bash
+uv run fastsem-jev-serve --layer 16 --retain-ratio 0.25 --served-name fastsem-jev --host 127.0.0.1 --port 8000
+~~~
+
+PowerShell 可使用相同的启动命令。请求和响应格式示例（概率值仅为示意）：
+
+~~~json
+{"state":"The request has manager approval.","model":"fastsem-jev","questions":{"q":{"type":"choice","instructions":"May the action proceed?","criteria":{"allow":"All required approval is present.","deny":"Approval is missing."}}}}
+~~~
+
+~~~json
+{"model":"fastsem-jev","answers":{"q":{"type":"choice","choice":"allow","probabilities":{"allow":0.91,"deny":0.09},"confidence":0.91}},"usage":{"input_tokens":42,"output_tokens":0}}
+~~~
+
+Noul 返回 `noul`（P(yes)）；Choice 返回 `choice` 和每个标签的概率；Score 返回概率分布及期望序数 `score`。服务支持 2–16 个选项；格式错误或不支持的请求返回 HTTP 400，不会静默截断输入。
+
+Linux 下，在第二个终端从 fastsem-jev 目录运行官方 JevBench CLI：
+
+~~~bash
+export PYTHONPATH=/data/jev/jevbench
+mkdir -p /data/jev/results/jevbench-fastsem-l16r25
+uv run python -m jevbench.cli run \
+  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
+  --adapter typesafe --endpoint http://127.0.0.1:8000 --key-env '' --model fastsem-jev \
+  --cost-basis self_hosted_gpu_cost_not_estimated --reserve-usd 0 --cap-usd 0 \
+  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
+  --raw-dir /data/jev/results/jevbench-fastsem-l16r25/raw \
+  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
+  --manifest /data/jev/results/jevbench-fastsem-l16r25/manifest.json \
+  --run-label fastsem-jev-l16r25
+uv run python -m jevbench.cli summarize \
+  --tasks /data/jev/jevbench/datasets/public/easy.jsonl,/data/jev/jevbench/datasets/public/original.jsonl,/data/jev/jevbench/datasets/public/hard.jsonl \
+  --results /data/jev/results/jevbench-fastsem-l16r25/results.jsonl \
+  --ledger /data/jev/results/jevbench-fastsem-l16r25/ledger.jsonl \
+  --public-export /data/jev/results/jevbench-fastsem-l16r25/summary.json
+~~~
+
+上面的独立公开集脚本可跨平台运行，直接调用 JevBench 的题目计分和汇总代码。官方 CLI 示例限定 Linux，因为 JevBench 本地 ledger 使用 Unix `fcntl` 文件锁。
 
 Python 调用：
 
 ~~~python
 from fastsem_jev import FastSemJev
 
-engine = FastSemJev(layer=16, retain_ratio=0.175)
+engine = FastSemJev(layer=16, retain_ratio=0.25)
 answer = engine.decide(
     state="包裹昨天离开仓库。",
     question="包裹送达了吗？",

@@ -12,7 +12,7 @@ REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 
 
 class FastSemJev:
-    def __init__(self, model=MODEL, revision=REVISION, layer=16, retain_ratio=0.175):
+    def __init__(self, model=MODEL, revision=REVISION, layer=16, retain_ratio=0.25):
         self.spec = config("fastsem-jev", [(layer, retain_ratio)])
         validate(self.spec, 32)
         self.model, self.tokenizer, self.metadata = load_causal_model(model, revision)

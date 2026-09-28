@@ -23,6 +23,7 @@ dependencies = [
 
 [project.scripts]
 fastsem-jev = "fastsem_jev.cli:main"
+fastsem-jev-serve = "fastsem_jev.typesafe_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
